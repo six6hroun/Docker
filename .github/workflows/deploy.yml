@@ -1,0 +1,70 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ghcr.io/six6hroun/users-app
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build image
+        run: |
+          docker build -t users-app .
+
+      - name: Push image
+        run: |
+          docker tag users-app $IMAGE_NAME:latest
+          docker tag users-app $IMAGE_NAME:${{ github.sha }}
+
+          docker push $IMAGE_NAME:latest
+          docker push $IMAGE_NAME:${{ github.sha }}
+
+  deploy:
+    needs: build
+    runs-on: self-hosted
+
+    steps:
+      - name: Login to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+          podman login ghcr.io \
+            -u ${{ github.actor }} \
+            --password-stdin
+
+      - name: Pull image
+        run: |
+          podman pull ${{ env.IMAGE_NAME }}:latest
+
+      - name: Stop old container
+        run: |
+          podman stop users-api  true
+          podman rm users-api  true
+
+      - name: Run new container
+        run: |
+          podman run -d \
+            --name users-api \
+            --network host \
+            -e DATABASE_URL=postgresql+psycopg://kubsu:kubsu@127.0.0.1:5432/kubsu \
+            ${{ env.IMAGE_NAME }}:latest
