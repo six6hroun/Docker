@@ -58,8 +58,8 @@ jobs:
 
       - name: Stop old container
         run: |
-          podman stop users-api  true
-          podman rm users-api  true
+          podman stop users-api || true
+          podman rm users-api || true
 
       - name: Run new container
         run: |
